@@ -1,0 +1,9 @@
+@echo off
+echo Iniciando la aplicacion...
+
+echo Instalando dependencias...
+call npm install
+
+echo Iniciando el servidor...
+start http://localhost:5173
+start /min cmd /c "npm run dev"

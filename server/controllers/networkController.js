@@ -1,103 +1,195 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import Camera from '../models/Camera.js';
-import FoundDevice from '../models/FoundDevice.js';
-import NetworkScan from '../models/NetworkScan.js';
+import { Camera, FoundDevice, NetworkScan } from '../models/index.js';
 import { networkInterfaces } from 'os';
+import { createScanNotification } from './notificationController.js';
 
 const execAsync = promisify(exec);
+
+const pingHost = async (ip) => {
+  try {
+    const startTime = Date.now();
+    const pingCommand = process.platform === 'win32'
+      ? `ping -n 1 -w 1000 ${ip}`
+      : `ping -c 1 -W 1 ${ip}`;
+    
+    const { stdout } = await execAsync(pingCommand);
+    const endTime = Date.now();
+    const pingTime = endTime - startTime;
+    
+    const isOnline = stdout.includes('ttl') || stdout.includes('TTL');
+    return { isOnline, pingTime: isOnline ? pingTime : null };
+  } catch (error) {
+    return { isOnline: false, pingTime: null };
+  }
+};
 
 export const scanNetwork = async (req, res) => {
   try {
     const { startIp, endIp } = req.body;
     const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
     if (!ipPattern.test(startIp) || !ipPattern.test(endIp)) {
-      return res
-        .status(400)
-        .json({ status: 'error', message: 'Invalid IP address format' });
+      return res.status(400).json({
+        status: 'error',
+        message: 'Formato de IP inválido'
+      });
     }
 
     const baseNetwork = startIp.split('.').slice(0, 3).join('.');
     const startHost = parseInt(startIp.split('.')[3]);
     const endHost = parseInt(endIp.split('.')[3]);
+    let progress = 0;
+    const totalHosts = endHost - startHost + 1;
     const onlineHosts = [];
     let newDevices = 0;
+    let totalPingTime = 0;
+    let onlineCount = 0;
+
+    // Enviar evento SSE para iniciar el progreso
+    if (req.app.locals.sseClients) {
+      req.app.locals.sseClients.forEach(client => {
+        client.write(`data: ${JSON.stringify({ type: 'scan_progress', progress: 0 })}\n\n`);
+      });
+    }
+
+    const scanStartTime = Date.now();
 
     for (let i = startHost; i <= endHost; i++) {
       const ip = `${baseNetwork}.${i}`;
-      try {
-        const pingCommand =
-          process.platform === 'win32'
-            ? `ping -n 1 -w 1000 ${ip}`
-            : `ping -c 1 -W 1 ${ip}`;
-        const { stdout } = await execAsync(pingCommand);
-        const isOnline = stdout.includes('ttl') || stdout.includes('TTL');
+      const { isOnline, pingTime } = await pingHost(ip);
 
-        if (isOnline) {
-          onlineHosts.push(ip);
-          const existingDevice = await FoundDevice.findOne({ where: { ip } });
-          if (!existingDevice) {
-            newDevices++;
+      progress = ((i - startHost + 1) / totalHosts) * 100;
+      
+      // Actualizar progreso
+      if (req.app.locals.sseClients) {
+        req.app.locals.sseClients.forEach(client => {
+          client.write(`data: ${JSON.stringify({ 
+            type: 'scan_progress', 
+            progress,
+            currentIp: ip,
+            status: isOnline ? 'online' : 'offline',
+            pingTime: pingTime || 0
+          })}\n\n`);
+        });
+      }
+
+      if (isOnline) {
+        onlineHosts.push(ip);
+        if (pingTime) {
+          totalPingTime += pingTime;
+          onlineCount++;
+        }
+
+        const [device, created] = await FoundDevice.findOrCreate({
+          where: { ip },
+          defaults: {
+            status: 'online',
+            lastSeen: new Date()
           }
-        }
-
-        const [camera] = await Camera.findOrCreate({
-          where: { ip },
-          defaults: {
-            name: `Camera at ${ip}`,
-            status: isOnline ? 'online' : 'offline',
-            lastSeen: new Date(),
-          },
         });
 
-        await FoundDevice.findOrCreate({
-          where: { ip },
-          defaults: {
-            cameraId: camera.id,
-            lastSeen: new Date(),
-            status: isOnline ? 'online' : 'offline',
-          },
-        });
-
-        if (!isOnline) {
-          await FoundDevice.update(
-            { status: 'offline', lastSeen: new Date() },
-            { where: { ip } }
-          );
+        if (created) {
+          newDevices++;
+        } else {
+          await device.update({
+            status: 'online',
+            lastSeen: new Date()
+          });
         }
-      } catch (error) {
-        await Camera.update(
-          { status: 'offline', lastSeen: new Date() },
-          { where: { ip } }
-        );
+      } else {
         await FoundDevice.update(
-          { status: 'offline', lastSeen: new Date() },
+          { status: 'offline' },
           { where: { ip } }
         );
       }
     }
 
-    // Registrar el escaneo
+    const scanEndTime = Date.now();
+    const scanDuration = scanEndTime - scanStartTime;
+    const averagePingTime = onlineCount > 0 ? totalPingTime / onlineCount : 0;
+
+    // Crear notificación del resultado del escaneo
+    await createScanNotification(onlineHosts.length, newDevices, scanDuration);
+
+    // Notificar finalización
+    if (req.app.locals.sseClients) {
+      req.app.locals.sseClients.forEach(client => {
+        client.write(`data: ${JSON.stringify({ 
+          type: 'scan_complete',
+          devicesFound: onlineHosts.length,
+          newDevices,
+          duration: scanDuration
+        })}\n\n`);
+      });
+    }
+
     await NetworkScan.create({
       ipRange: `${startIp}-${endIp}`,
       devicesFound: onlineHosts.length,
       newDevices,
-      scanDuration: 1000, // Placeholder, podríamos calcular el tiempo real
+      scanDuration,
+      averagePingTime
     });
 
     res.status(200).json({
       status: 'success',
-      data: { 
-        scannedRange: `${startIp} - ${endIp}`, 
+      data: {
+        scannedRange: `${startIp} - ${endIp}`,
         onlineHosts,
-        newDevices 
-      },
+        newDevices,
+        averagePingTime
+      }
     });
   } catch (error) {
-    console.error('Error during network scan:', error);
-    res
-      .status(500)
-      .json({ status: 'error', message: 'Error scanning network' });
+    console.error('Error durante el escaneo de red:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error al escanear la red'
+    });
+  }
+};
+
+export const getIpAddress = async (req, res) => {
+  try {
+    const nets = networkInterfaces();
+    let ipAddress = '';
+
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) {
+          ipAddress = net.address;
+          break;
+        }
+      }
+      if (ipAddress) break;
+    }
+
+    res.status(200).json({
+      status: 'success',
+      ipAddress
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'Error al obtener la dirección IP'
+    });
+  }
+};
+
+export const updateDeviceType = async (req, res) => {
+  try {
+    const { ip, type } = req.body;
+    await FoundDevice.update({ type }, { where: { ip } });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Tipo de dispositivo actualizado'
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'Error al actualizar el tipo de dispositivo'
+    });
   }
 };
 
@@ -105,34 +197,18 @@ export const getScanHistory = async (req, res) => {
   try {
     const history = await NetworkScan.findAll({
       order: [['scanDate', 'DESC']],
-      limit: 10,
+      limit: 10
     });
-    res.status(200).json({ data: history });
+
+    res.status(200).json({
+      status: 'success',
+      data: history
+    });
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching scan history' });
-  }
-};
-
-export const updateDeviceType = async (req, res) => {
-  try {
-    const { ip, type } = req.body;
-
-    const foundDevice = await FoundDevice.findOne({ where: { ip } });
-    if (!foundDevice) {
-      return res.status(404).json({ message: 'Device not found' });
-    }
-
-    foundDevice.type = type;
-    await foundDevice.save();
-
-    if (type === 'camera') {
-      await Camera.update({ type }, { where: { ip } });
-    }
-
-    res.status(200).json({ message: 'Device type updated successfully' });
-  } catch (error) {
-    console.error('Error updating device type:', error);
-    res.status(500).json({ message: 'Error updating device type' });
+    res.status(500).json({
+      status: 'error',
+      message: 'Error al obtener el historial de escaneos'
+    });
   }
 };
 
@@ -140,27 +216,15 @@ export const removeDevice = async (req, res) => {
   try {
     const { ip } = req.params;
     await FoundDevice.destroy({ where: { ip } });
-    res.status(200).json({ message: 'Device removed successfully' });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Dispositivo eliminado'
+    });
   } catch (error) {
-    res.status(500).json({ message: 'Error removing device' });
+    res.status(500).json({
+      status: 'error',
+      message: 'Error al eliminar el dispositivo'
+    });
   }
-};
-
-export const getIpAddress = (req, res) => {
-  const nets = networkInterfaces();
-  let ipAddress = '';
-
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
-      if (net.family === 'IPv4' && !net.internal) {
-        ipAddress = net.address;
-        break;
-      }
-    }
-    if (ipAddress) {
-      break;
-    }
-  }
-
-  res.status(200).json({ ipAddress });
 };

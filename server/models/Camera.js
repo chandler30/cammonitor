@@ -11,9 +11,12 @@ const Camera = sequelize.define('Camera', {
     type: DataTypes.STRING,
     allowNull: false,
     unique: true,
+    validate: {
+      isIP: true,
+    },
   },
   name: {
-    type: DataTypes.STRING,
+    type: DataTypes.STRING(100),
     allowNull: false,
   },
   status: {
@@ -23,6 +26,14 @@ const Camera = sequelize.define('Camera', {
   lastSeen: {
     type: DataTypes.DATE,
   },
+}, {
+  indexes: [
+    {
+      unique: true,
+      fields: ['ip'],
+    },
+  ],
 });
 
+export { Camera };
 export default Camera;

@@ -8,6 +8,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import { useEffect, useState, createContext, useContext } from 'react';
 import axios from 'axios';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 export const AuthContext = createContext<{
   isAuthenticated: boolean;
@@ -104,6 +106,18 @@ function App() {
           />
         </Routes>
       </Router>
+      <ToastContainer
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
     </AuthContext.Provider>
   );
 }

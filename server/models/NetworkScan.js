@@ -12,7 +12,7 @@ const NetworkScan = sequelize.define('NetworkScan', {
     defaultValue: DataTypes.NOW,
   },
   ipRange: {
-    type: DataTypes.STRING,
+    type: DataTypes.STRING(50),
     allowNull: false,
   },
   devicesFound: {
@@ -24,9 +24,20 @@ const NetworkScan = sequelize.define('NetworkScan', {
     defaultValue: 0,
   },
   scanDuration: {
-    type: DataTypes.INTEGER, // in milliseconds
+    type: DataTypes.INTEGER,
     allowNull: false,
   },
+  averagePingTime: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
+}, {
+  indexes: [
+    {
+      fields: ['scanDate'],
+    },
+  ],
 });
 
+export { NetworkScan };
 export default NetworkScan;

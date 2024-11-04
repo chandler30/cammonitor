@@ -1,6 +1,6 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
-import Camera from './Camera.js';
+import { Camera } from './Camera.js';
 
 const Notification = sequelize.define('Notification', {
   id: {
@@ -14,6 +14,7 @@ const Notification = sequelize.define('Notification', {
       model: Camera,
       key: 'id',
     },
+    allowNull: true,
   },
   type: {
     type: DataTypes.ENUM('offline', 'online', 'error'),
@@ -31,9 +32,19 @@ const Notification = sequelize.define('Notification', {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW,
   },
+}, {
+  indexes: [
+    {
+      fields: ['cameraId', 'timestamp'],
+    },
+    {
+      fields: ['read'],
+    },
+  ],
 });
 
-Camera.hasMany(Notification);
-Notification.belongsTo(Camera);
+Camera.hasMany(Notification, { foreignKey: 'cameraId' });
+Notification.belongsTo(Camera, { foreignKey: 'cameraId' });
 
+export { Notification };
 export default Notification;

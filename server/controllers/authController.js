@@ -9,23 +9,26 @@ const signToken = (id) => {
 
 export const register = async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, role } = req.body;
+
 
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({
         status: 'error',
-        message: 'Email already in use',
+        message: 'El correo electrónico ya está en uso',
       });
     }
 
+    // Crear el usuario
     const user = await User.create({
       email,
       password,
       name,
-      role: 'user',
+      role: role || 'user', 
     });
 
+    // Generar token
     const token = signToken(user.id);
 
     res.status(201).json({
@@ -41,9 +44,10 @@ export const register = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Error en el registro:', error);
     res.status(500).json({
       status: 'error',
-      message: 'Error creating user',
+      message: 'Error al crear el usuario',
     });
   }
 };
@@ -55,7 +59,7 @@ export const login = async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({
         status: 'error',
-        message: 'Please provide email and password',
+        message: 'Por favor proporcione email y contraseña',
       });
     }
 
@@ -63,7 +67,7 @@ export const login = async (req, res) => {
     if (!user || !(await user.validatePassword(password))) {
       return res.status(401).json({
         status: 'error',
-        message: 'Incorrect email or password',
+        message: 'Email o contraseña incorrectos',
       });
     }
 
@@ -84,7 +88,7 @@ export const login = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       status: 'error',
-      message: 'An error occurred while logging in',
+      message: 'Error al iniciar sesión',
     });
   }
 };
@@ -98,7 +102,7 @@ export const getProfile = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         status: 'error',
-        message: 'User not found',
+        message: 'Usuario no encontrado',
       });
     }
 
@@ -109,7 +113,7 @@ export const getProfile = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       status: 'error',
-      message: 'Error fetching profile',
+      message: 'Error al obtener el perfil',
     });
   }
 };
@@ -122,7 +126,7 @@ export const updateProfile = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         status: 'error',
-        message: 'User not found',
+        message: 'Usuario no encontrado',
       });
     }
 
@@ -131,7 +135,7 @@ export const updateProfile = async (req, res) => {
       if (existingUser) {
         return res.status(400).json({
           status: 'error',
-          message: 'Email already in use',
+          message: 'El correo electrónico ya está en uso',
         });
       }
       user.email = email;
@@ -145,7 +149,7 @@ export const updateProfile = async (req, res) => {
       if (!currentPassword) {
         return res.status(400).json({
           status: 'error',
-          message: 'Please provide current password',
+          message: 'Por favor proporcione la contraseña actual',
         });
       }
 
@@ -153,7 +157,7 @@ export const updateProfile = async (req, res) => {
       if (!isValidPassword) {
         return res.status(400).json({
           status: 'error',
-          message: 'Current password is incorrect',
+          message: 'La contraseña actual es incorrecta',
         });
       }
 
@@ -176,7 +180,7 @@ export const updateProfile = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       status: 'error',
-      message: 'Error updating profile',
+      message: 'Error al actualizar el perfil',
     });
   }
 };

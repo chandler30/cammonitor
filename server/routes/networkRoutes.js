@@ -6,15 +6,19 @@ import {
   getScanHistory,
   removeDevice,
 } from '../controllers/networkController.js';
-import { protect } from '../middleware/auth.js';
+import { protect, restrictTo } from '../middleware/auth.js';
 
 const router = express.Router();
 
 router.use(protect);
-router.post('/scan', scanNetwork);
+
+// Rutas públicas (accesibles para todos los usuarios autenticados)
 router.get('/ip', getIpAddress);
-router.post('/update-device-type', updateDeviceType);
 router.get('/scan-history', getScanHistory);
-router.delete('/devices/:ip', removeDevice);
+
+// Rutas protegidas (solo para administradores)
+router.post('/scan', restrictTo('admin'), scanNetwork);
+router.post('/update-device-type', restrictTo('admin'), updateDeviceType);
+router.delete('/devices/:ip', restrictTo('admin'), removeDevice);
 
 export default router;

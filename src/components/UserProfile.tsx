@@ -90,7 +90,7 @@ export default function UserProfile() {
                   active ? 'bg-gray-100' : ''
                 } block w-full text-left px-4 py-2 text-sm text-gray-700`}
               >
-                Settings
+                Configuración
               </button>
             )}
           </Menu.Item>
@@ -102,7 +102,7 @@ export default function UserProfile() {
                   active ? 'bg-gray-100' : ''
                 } block w-full text-left px-4 py-2 text-sm text-gray-700`}
               >
-                Sign out
+                Cerrar sesión
               </button>
             )}
           </Menu.Item>

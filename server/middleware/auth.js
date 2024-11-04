@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { promisify } from 'util';
+import { User } from '../models/index.js';
 
 export const protect = async (req, res, next) => {
   try {
@@ -11,17 +12,27 @@ export const protect = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({
         status: 'error',
-        message: 'You are not logged in. Please log in to get access.',
+        message: 'No está autorizado. Por favor inicie sesión.',
       });
     }
 
     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    
+    // Obtener el usuario y su rol
+    const user = await User.findByPk(decoded.id);
+    if (!user) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'El usuario ya no existe.',
+      });
+    }
+
+    req.user = user;
     next();
   } catch (error) {
     res.status(401).json({
       status: 'error',
-      message: 'Invalid token or token expired',
+      message: 'Token inválido o expirado',
     });
   }
 };
@@ -31,7 +42,7 @@ export const restrictTo = (...roles) => {
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         status: 'error',
-        message: 'You do not have permission to perform this action',
+        message: 'No tiene permisos para realizar esta acción',
       });
     }
     next();

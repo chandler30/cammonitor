@@ -42,6 +42,12 @@ const User = sequelize.define(
         }
       },
     },
+    indexes: [
+      {
+        unique: true,
+        fields: ['email'],
+      },
+    ],
   }
 );
 
@@ -49,4 +55,5 @@ User.prototype.validatePassword = async function (password) {
   return bcrypt.compare(password, this.password);
 };
 
+export { User };
 export default User;
